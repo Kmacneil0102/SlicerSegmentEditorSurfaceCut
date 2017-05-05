@@ -15,6 +15,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.clippingMarkupNode = None
     self.clippingModel = None
     self.clippingMarkupNodeObserver = None
+    self.buttonToOperationNameMap = {}
 
   def clone(self):
     # It should not be necessary to modify this method
@@ -35,6 +36,34 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 """
 
   def setupOptionsFrame(self):
+    self.operationRadioButtons = []
+
+    #Operation buttons
+    self.eraseInsideButton = qt.QRadioButton("Erase inside")
+    self.operationRadioButtons.append(self.eraseInsideButton)
+    self.buttonToOperationNameMap[self.eraseInsideButton] = 'ERASE_INSIDE'
+
+    self.eraseOutsideButton = qt.QRadioButton("Erase outside")
+    self.operationRadioButtons.append(self.eraseOutsideButton)
+    self.buttonToOperationNameMap[self.eraseOutsideButton] = 'ERASE_OUTSIDE'
+
+    self.fillInsideButton = qt.QRadioButton("Fill inside")
+    self.operationRadioButtons.append(self.fillInsideButton)
+    self.buttonToOperationNameMap[self.fillInsideButton] = 'FILL_INSIDE'
+
+    self.fillOutsideButton = qt.QRadioButton("Fill outside")
+    self.operationRadioButtons.append(self.fillOutsideButton)
+    self.buttonToOperationNameMap[self.fillOutsideButton] = 'FILL_OUTSIDE'
+
+    #Operation buttons layout
+    operationLayout = qt.QGridLayout()
+    operationLayout.addWidget(self.eraseInsideButton, 0, 0)
+    operationLayout.addWidget(self.eraseOutsideButton, 1, 0)
+    operationLayout.addWidget(self.fillInsideButton, 0, 1)
+    operationLayout.addWidget(self.fillOutsideButton, 1, 1)
+
+    self.operationRadioButtons[2].setChecked(True)
+    self.scriptedEffect.addLabeledOptionsWidget("Operation:", operationLayout)
 
     #Fiducial Placement widget
     self.fiducialPlacementToggle = slicer.qSlicerMarkupsPlaceWidget()
@@ -64,6 +93,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.scriptedEffect.addOptionsWidget(finishAction)
 
     # connections
+    for button in self.operationRadioButtons:
+      button.connect('toggled(bool)',
+      lambda toggle, widget=self.buttonToOperationNameMap[button]: self.onOperationSelectionChanged(widget, toggle))
     self.applyButton.connect('clicked()', self.onApply)
     self.cancelButton.connect('clicked()', self.onCancel)
     self.fiducialPlacementToggle.placeButton().clicked.connect(self.onFiducialPlacementToggleChanged)
@@ -83,12 +115,20 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     # Turn off effect-specific cursor for this effect
     return slicer.util.mainWindow().cursor
 
+  def setMRMLDefaults(self):
+    self.scriptedEffect.setParameterDefault("Operation", "FILL_INSIDE")
+
   def updateGUIFromMRML(self):
     self.cancelButton.setEnabled(self.clippingMarkupNode.GetNumberOfFiducials() is not 0)
 
   #
   # Effect specific methods (the above ones are the API methods to override)
   #
+
+  def onOperationSelectionChanged(self, operationName, toggle):
+    if not toggle:
+      return
+    self.scriptedEffect.setParameter("Operation", operationName)
 
   def onFiducialPlacementToggleChanged(self):
     #print(self.fiducialPlacementToggle.placeModeEnabled)
@@ -122,6 +162,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
   def onApply(self):
 
+    import vtkSegmentationCorePython as vtkSegmentationCore
+
     # Allow users revert to this state by clicking Undo
     self.scriptedEffect.saveStateForUndo()
 
@@ -129,13 +171,66 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
 
     if self.clippingMarkupNode and self.clippingMarkupNode.GetNumberOfFiducials() is not 0:
-      l = slicer.vtkSlicerSegmentationsModuleLogic
-      seg = slicer.util.getNode('Segmentation')
-      s = l.CreateSegmentFromModelNode(self.clippingModel, seg)
+      operationName = self.scriptedEffect.parameter("Operation")
+      modifierLabelmap = self.scriptedEffect.defaultModifierLabelmap()
+      segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+      WorldToModifierLabelmapIjkTransform = vtk.vtkTransform()
 
-      segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
-      s.SetName(segmentID)
-      seg.GetSegmentation().GetSegment(segmentID).DeepCopy(s)
+      WorldToModifierLabelmapIjkTransformer = vtk.vtkTransformPolyDataFilter()
+      WorldToModifierLabelmapIjkTransformer.SetTransform(WorldToModifierLabelmapIjkTransform)
+      WorldToModifierLabelmapIjkTransformer.SetInputConnection(self.clippingModel.GetPolyDataConnection())
+
+      segmentationToSegmentationIjkTransformMatrix = vtk.vtkMatrix4x4()
+      modifierLabelmap.GetImageToWorldMatrix(segmentationToSegmentationIjkTransformMatrix)
+      segmentationToSegmentationIjkTransformMatrix.Invert()
+      WorldToModifierLabelmapIjkTransform.Concatenate(segmentationToSegmentationIjkTransformMatrix)
+
+      worldToSegmentationTransformMatrix = vtk.vtkMatrix4x4()
+      slicer.vtkMRMLTransformNode.GetMatrixTransformBetweenNodes(None, segmentationNode.GetParentTransformNode(), worldToSegmentationTransformMatrix)
+      WorldToModifierLabelmapIjkTransform.Concatenate(worldToSegmentationTransformMatrix)
+      WorldToModifierLabelmapIjkTransformer.Update()
+
+      polyToStencil = vtk.vtkPolyDataToImageStencil()
+      polyToStencil.SetOutputSpacing(1.0, 1.0, 1.0)
+      polyToStencil.SetInputConnection(WorldToModifierLabelmapIjkTransformer.GetOutputPort())
+      boundsIjk = WorldToModifierLabelmapIjkTransformer.GetOutput().GetBounds()
+      modifierLabelmapExtent = self.scriptedEffect.modifierLabelmap().GetExtent()
+      polyToStencil.SetOutputWholeExtent(modifierLabelmapExtent[0], modifierLabelmapExtent[1], modifierLabelmapExtent[2], modifierLabelmapExtent[3], int(round(boundsIjk[4])), int(round(boundsIjk[5])))
+      polyToStencil.Update()
+
+      stencilData = polyToStencil.GetOutput()
+      stencilExtent = [0, -1, 0, -1, 0, -1]
+      stencilData.SetExtent(stencilExtent)
+
+      stencilToImage = vtk.vtkImageStencilToImage()
+      stencilToImage.SetInputConnection(polyToStencil.GetOutputPort())
+      if operationName == "FILL_INSIDE" or operationName == "ERASE_INSIDE":
+        stencilToImage.SetInsideValue(1.0)
+        stencilToImage.SetOutsideValue(0.0)
+      else:
+        stencilToImage.SetInsideValue(0.0)
+        stencilToImage.SetOutsideValue(1.0)
+      stencilToImage.SetOutputScalarType(modifierLabelmap.GetScalarType())
+
+      stencilPositioner = vtk.vtkImageChangeInformation()
+      stencilPositioner.SetInputConnection(stencilToImage.GetOutputPort())
+      stencilPositioner.SetOutputSpacing(modifierLabelmap.GetSpacing())
+      stencilPositioner.SetOutputOrigin(modifierLabelmap.GetOrigin())
+
+      stencilPositioner.Update()
+      orientedStencilPositionerOuput = vtkSegmentationCore.vtkOrientedImageData()
+      orientedStencilPositionerOuput.ShallowCopy(stencilToImage.GetOutput())
+      imageToWorld = vtk.vtkMatrix4x4()
+      modifierLabelmap.GetImageToWorldMatrix(imageToWorld)
+      orientedStencilPositionerOuput.SetImageToWorldMatrix(imageToWorld)
+
+      vtkSegmentationCore.vtkOrientedImageDataResample.ModifyImage(modifierLabelmap, orientedStencilPositionerOuput, vtkSegmentationCore.vtkOrientedImageDataResample.OPERATION_MAXIMUM)
+
+      modMode = slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeAdd
+      if operationName == "ERASE_INSIDE" or operationName == "ERASE_OUTSIDE":
+        modMode = slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeRemove
+
+      self.scriptedEffect.modifySelectedSegmentByLabelmap(modifierLabelmap, modMode)
 
     self.reset()
     self.createNewMarkupNode()
