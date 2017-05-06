@@ -101,6 +101,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.fiducialPlacementToggle.placeButton().clicked.connect(self.onFiducialPlacementToggleChanged)
 
   def activate(self):
+    self.scriptedEffect.showEffectCursorInSliceView = False
     # Create empty markup fiducial node
     if not self.clippingMarkupNode:
       self.createNewMarkupNode()
