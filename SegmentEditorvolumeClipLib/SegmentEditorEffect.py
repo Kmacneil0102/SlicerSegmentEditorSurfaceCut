@@ -13,11 +13,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
     # Effect-specific members
     self.segmentMarkupNode = None
-    self.segmentModel = None
     self.segmentMarkupNodeObserver = None
-    self.buttonToOperationNameMap = {}
+    self.segmentEditorNode = None
+    self.segmentEditorNodeObserver = None
+    self.segmentModel = None
     self.observedSegmentation = None
     self.segmentObserver = None
+    self.buttonToOperationNameMap = {}
 
   def clone(self):
     # It should not be necessary to modify this method
@@ -34,7 +36,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     return qt.QIcon()
 
   def helpText(self):
-    return """<html>Use markup fiducials to create a segment<br>. The surface is then generated from these points. All previous contents of the selected segment are overwritten on Apply.
+    return """<html>Use markup fiducials to create a segment<br>. The surface is then generated from these points.
 </html>"""
 
   def setupOptionsFrame(self):
@@ -83,7 +85,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.applyButton.setToolTip("Generate surface from markup fiducials.")
     self.scriptedEffect.addOptionsWidget(self.applyButton)
 
-    # Cancel Button
+    # Cancel button
     self.cancelButton = qt.QPushButton("Cancel")
     self.cancelButton.objectName = self.__class__.__name__ + 'Cancel'
     self.cancelButton.setToolTip("Clear fiducials and remove from scene.")
@@ -94,8 +96,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     finishAction.addWidget(self.applyButton)
     self.scriptedEffect.addOptionsWidget(finishAction)
 
-    self.editButton = qt.QPushButton("Edit surface")
-    self.editButton.objectName = self.__class__.__name__ + 'Edit surface'
+    # Edit surface button
+    self.editButton = qt.QPushButton("Edit")
+    self.editButton.objectName = self.__class__.__name__ + 'Edit'
     self.editButton.setToolTip("Edit fiducials of segment surface.")
     self.scriptedEffect.addOptionsWidget(self.editButton)
 
@@ -116,6 +119,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
       self.fiducialPlacementToggle.setCurrentNode(self.segmentMarkupNode)
       self.setAndObserveSegmentMarkupNode(self.segmentMarkupNode)
       self.fiducialPlacementToggle.setPlaceModeEnabled(False)
+    self.setAndObserveSegmentEditorNode(slicer.mrmlScene.GetSingletonNode("SegmentEditor", "vtkMRMLSegmentEditorNode"))
     self.observeSegmentation(True)
 
   def deactivate(self):
@@ -130,13 +134,15 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.scriptedEffect.setParameterDefault("Operation", "FILL_INSIDE")
 
   def updateGUIFromMRML(self):
-    self.cancelButton.setEnabled(self.segmentMarkupNode.GetNumberOfFiducials() is not 0)
-    self.applyButton.setEnabled(self.segmentMarkupNode.GetNumberOfFiducials() >= 3)
+    if self.segmentMarkupNode:
+      self.cancelButton.setEnabled(self.segmentMarkupNode.GetNumberOfFiducials() is not 0)
+      self.applyButton.setEnabled(self.segmentMarkupNode.GetNumberOfFiducials() >= 3)
 
     segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
     segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-    segment = segmentationNode.GetSegmentation().GetSegment(segmentID)
-    self.editButton.setVisible(segment.HasTag("fP"))
+    if segmentID and segmentationNode:
+      segment = segmentationNode.GetSegmentation().GetSegment(segmentID)
+      self.editButton.setVisible(segment.HasTag("fP"))
 
   #
   # Effect specific methods (the above ones are the API methods to override)
@@ -160,17 +166,24 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self.fiducialPlacementToggle.setCurrentNode(self.segmentMarkupNode)
 
   def onSegmentModified(self, caller, event):
-    self.updateGUIFromMRML()
-    # Get color of edited segment
-    segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-    displayNode = segmentationNode.GetDisplayNode()
-    if displayNode is None:
-      logging.error("preview: Invalid segmentation display node!")
-      color = [0.5, 0.5, 0.5]
-    segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
-    r, g, b = segmentationNode.GetSegmentation().GetSegment(segmentID).GetColor()
-    self.segmentModel.GetDisplayNode().SetColor(r, g, b)  # Edited segment color
+    if not self.editButton.isEnabled() and self.segmentMarkupNode.GetNumberOfFiducials() is not 0:
+      self.reset()
+      self.createNewMarkupNode()
+      self.fiducialPlacementToggle.setCurrentNode(self.segmentMarkupNode)
+    else:
+      self.updateGUIFromMRML()
 
+    if self.segmentModel:
+      # Get color of edited segment
+      segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+      displayNode = segmentationNode.GetDisplayNode()
+      if displayNode is None:
+        logging.error("preview: Invalid segmentation display node!")
+        color = [0.5, 0.5, 0.5]
+      segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
+      r, g, b = segmentationNode.GetSegmentation().GetSegment(segmentID).GetColor()
+      if (r,g,b) != self.segmentModel.GetDisplayNode().GetColor():
+        self.segmentModel.GetDisplayNode().SetColor(r, g, b)  # Edited segment color
 
   def onCancel(self):
     self.reset()
@@ -178,28 +191,32 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.fiducialPlacementToggle.setCurrentNode(self.segmentMarkupNode)
 
   def onEdit(self):
-      # Create empty model node
-      if self.segmentModel is None:
-        self.segmentModel = slicer.vtkMRMLModelNode()
-        slicer.mrmlScene.AddNode(self.segmentModel)
+    # Create empty model node
+    if self.segmentModel is None:
+      self.segmentModel = slicer.vtkMRMLModelNode()
+      slicer.mrmlScene.AddNode(self.segmentModel)
 
-      segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
-      segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-      segment = segmentationNode.GetSegmentation().GetSegment(segmentID)
-      fPosStr = vtk.mutable("")
-      fPosNum = vtk.mutable("0")
-      segment.GetTag("fP", fPosStr)
-      segment.GetTag("fN", fPosNum)
+    segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
+    segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+    segment = segmentationNode.GetSegmentation().GetSegment(segmentID)
+    fPosStr = vtk.mutable("")
+    fPosNum = vtk.mutable("0")
+    segment.GetTag("fP", fPosStr)
+    segment.GetTag("fN", fPosNum)
 
-      import numpy
-      fPos = numpy.fromstring(str(fPosStr), dtype='float64').reshape((int(fPosNum),3))
-      for i in xrange(int(fPosNum)):
-        self.segmentMarkupNode.AddFiducialFromArray(fPos[i])
-      self.updateModelFromSegmentMarkupNode()
+    import numpy
+    fPos = numpy.fromstring(str(fPosStr), dtype='float64').reshape((int(fPosNum), 3))
+    for i in xrange(int(fPosNum)):
+      self.segmentMarkupNode.AddFiducialFromArray(fPos[i])
+    self.editButton.setEnabled(False)
+    self.updateModelFromSegmentMarkupNode()
 
   def reset(self):
     if self.fiducialPlacementToggle.placeModeEnabled:
       self.fiducialPlacementToggle.setPlaceModeEnabled(False)
+
+    if not self.editButton.isEnabled():
+      self.editButton.setEnabled(True)
 
     if self.segmentModel:
       slicer.mrmlScene.RemoveNode(self.segmentModel)
@@ -208,6 +225,10 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     if self.segmentMarkupNode:
       slicer.mrmlScene.RemoveNode(self.segmentMarkupNode)
       self.setAndObserveSegmentMarkupNode(None)
+
+    if self.segmentEditorNode:
+      slicer.mrmlScene.RemoveNode(self.segmentEditorNode)
+      self.setAndObserveSegmentEditorNode(None)
 
   def onApply(self):
 
@@ -220,6 +241,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
 
     if self.segmentMarkupNode and (self.segmentModel.GetPolyData().GetNumberOfPolys() > 0):
+      self.observeSegmentation(False)
       operationName = self.scriptedEffect.parameter("Operation")
       modifierLabelmap = self.scriptedEffect.defaultModifierLabelmap()
       segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
@@ -284,7 +306,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
       import numpy
       n = self.segmentMarkupNode.GetNumberOfFiducials()
       # get fiducial positions
-      fPos = numpy.zeros((n,3))
+      fPos = numpy.zeros((n, 3))
       for i in xrange(n):
         coord = [0.0, 0.0, 0.0]
         self.segmentMarkupNode.GetNthFiducialPosition(i, coord)
@@ -297,12 +319,15 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.reset()
     self.createNewMarkupNode()
     self.fiducialPlacementToggle.setCurrentNode(self.segmentMarkupNode)
-
+    self.observeSegmentation(True)
     qt.QApplication.restoreOverrideCursor()
 
   def observeSegmentation(self, observationEnabled):
     import vtkSegmentationCorePython as vtkSegmentationCore
-    segmentation = self.scriptedEffect.parameterSetNode().GetSegmentationNode().GetSegmentation()
+    if self.scriptedEffect.parameterSetNode().GetSegmentationNode():
+      segmentation = self.scriptedEffect.parameterSetNode().GetSegmentationNode().GetSegmentation()
+    else:
+      segmentation = None
     # Remove old observer
     if self.observedSegmentation:
       self.observedSegmentation.RemoveObserver(self.segmentObserver)
@@ -342,6 +367,30 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
   def onSegmentMarkupNodeModified(self, observer, eventid):
     self.updateModelFromSegmentMarkupNode()
+    self.updateGUIFromMRML()
+
+  def setAndObserveSegmentEditorNode(self, segmentEditorNode):
+    if segmentEditorNode == self.segmentEditorNode and self.segmentEditorNodeObserver:
+      # no change and node is already observed
+      return
+      # Remove observer to old parameter node
+    if self.segmentEditorNode and self.segmentEditorNodeObserver:
+      self.segmentEditorNode.RemoveObserver(self.segmentEditorNodeObserver)
+      self.segmentEditorNodeObserver = None
+      # Set and observe new parameter node
+    self.segmentEditorNode = segmentEditorNode
+    if self.segmentEditorNode:
+      self.segmentEditorNodeObserver = self.segmentEditorNode.AddObserver(vtk.vtkCommand.ModifiedEvent, self.onSegmentEditorNodeModified)
+
+  def onSegmentEditorNodeModified(self, observer, eventid):
+    # Get color of edited segment
+    segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
+    segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
+    if segmentID and self.segmentModel:
+      r, g, b = segmentationNode.GetSegmentation().GetSegment(segmentID).GetColor()
+      if (r, g, b) != self.segmentModel.GetDisplayNode().GetColor():
+        self.segmentModel.GetDisplayNode().SetColor(r, g, b)  # Edited segment color
+
     self.updateGUIFromMRML()
 
   def updateModelFromSegmentMarkupNode(self):
@@ -434,10 +483,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
       # Get color of edited segment
       segmentationNode = self.scriptedEffect.parameterSetNode().GetSegmentationNode()
-      displayNode = segmentationNode.GetDisplayNode()
-      if displayNode is None:
-        logging.error("preview: Invalid segmentation display node!")
-        color = [0.5, 0.5, 0.5]
       segmentID = self.scriptedEffect.parameterSetNode().GetSelectedSegmentID()
       r, g, b = segmentationNode.GetSegmentation().GetSegment(segmentID).GetColor()
 
