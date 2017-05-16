@@ -119,12 +119,13 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
       self.fiducialPlacementToggle.setCurrentNode(self.segmentMarkupNode)
       self.setAndObserveSegmentMarkupNode(self.segmentMarkupNode)
       self.fiducialPlacementToggle.setPlaceModeEnabled(False)
-    self.setAndObserveSegmentEditorNode(slicer.mrmlScene.GetSingletonNode("SegmentEditor", "vtkMRMLSegmentEditorNode"))
+    self.setAndObserveSegmentEditorNode(self.scriptedEffect.parameterSetNode())
     self.observeSegmentation(True)
 
   def deactivate(self):
     self.reset()
     self.observeSegmentation(False)
+    self.setAndObserveSegmentEditorNode(None)
 
   def createCursor(self, widget):
     # Turn off effect-specific cursor for this effect
@@ -225,10 +226,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     if self.segmentMarkupNode:
       slicer.mrmlScene.RemoveNode(self.segmentMarkupNode)
       self.setAndObserveSegmentMarkupNode(None)
-
-    if self.segmentEditorNode:
-      slicer.mrmlScene.RemoveNode(self.segmentEditorNode)
-      self.setAndObserveSegmentEditorNode(None)
 
   def onApply(self):
 
