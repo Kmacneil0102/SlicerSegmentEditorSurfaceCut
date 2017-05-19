@@ -8,9 +8,7 @@ class SegmentEditorvolumeClip(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
-  x=3
   def __init__(self, parent):
-    import string
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SegmentEditorvolumeClip"
     self.parent.categories = ["Segmentation"]
