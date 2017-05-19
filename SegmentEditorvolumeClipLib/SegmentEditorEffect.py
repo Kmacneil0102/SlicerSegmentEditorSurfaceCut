@@ -36,7 +36,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     return qt.QIcon()
 
   def helpText(self):
-    return """<html>Use markup fiducials to create a segment<br>. The surface is then generated from these points.
+    return """<html>Use markup fiducials to fill a segment<br>. The surface is generated from the placed points.
 </html>"""
 
   def setupOptionsFrame(self):
@@ -59,12 +59,18 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.operationRadioButtons.append(self.fillOutsideButton)
     self.buttonToOperationNameMap[self.fillOutsideButton] = 'FILL_OUTSIDE'
 
+    self.setButton = qt.QRadioButton("Set")
+    self.operationRadioButtons.append(self.setButton)
+    self.buttonToOperationNameMap[self.setButton] = 'SET'
+    self.setButton.setVisible(False)
+
     #Operation buttons layout
     operationLayout = qt.QGridLayout()
     operationLayout.addWidget(self.eraseInsideButton, 0, 0)
     operationLayout.addWidget(self.eraseOutsideButton, 1, 0)
     operationLayout.addWidget(self.fillInsideButton, 0, 1)
     operationLayout.addWidget(self.fillOutsideButton, 1, 1)
+    operationLayout.addWidget(self.setButton, 0, 2)
 
     self.operationRadioButtons[2].setChecked(True)
     self.scriptedEffect.addLabeledOptionsWidget("Operation:", operationLayout)
@@ -74,10 +80,19 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.fiducialPlacementToggle.setMRMLScene(slicer.mrmlScene)
     self.fiducialPlacementToggle.placeMultipleMarkups = self.fiducialPlacementToggle.ForcePlaceMultipleMarkups
     self.fiducialPlacementToggle.buttonsVisible = False
-    self.scriptedEffect.addLabeledOptionsWidget("Fiducial Placement: ", self.fiducialPlacementToggle)
     self.fiducialPlacementToggle.show()
     self.fiducialPlacementToggle.placeButton().show()
     self.fiducialPlacementToggle.deleteButton().show()
+
+    # Edit surface button
+    self.editButton = qt.QPushButton("Edit previous group")
+    self.editButton.objectName = self.__class__.__name__ + 'Edit'
+    self.editButton.setToolTip("Edit the previously placed group of fiducials.")
+
+    fiducialAction = qt.QHBoxLayout()
+    fiducialAction.addWidget(self.fiducialPlacementToggle)
+    fiducialAction.addWidget(self.editButton)
+    self.scriptedEffect.addLabeledOptionsWidget("Fiducial Placement: ", fiducialAction)
 
     # Apply button
     self.applyButton = qt.QPushButton("Apply")
@@ -95,12 +110,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     finishAction.addWidget(self.cancelButton)
     finishAction.addWidget(self.applyButton)
     self.scriptedEffect.addOptionsWidget(finishAction)
-
-    # Edit surface button
-    self.editButton = qt.QPushButton("Edit")
-    self.editButton.objectName = self.__class__.__name__ + 'Edit'
-    self.editButton.setToolTip("Edit fiducials of segment surface.")
-    self.scriptedEffect.addOptionsWidget(self.editButton)
 
     # connections
     for button in self.operationRadioButtons:
@@ -144,6 +153,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     if segmentID and segmentationNode:
       segment = segmentationNode.GetSegmentation().GetSegment(segmentID)
       self.editButton.setVisible(segment.HasTag("fP"))
+      self.setButton.setVisible(segment.HasTag("fP"))
 
   #
   # Effect specific methods (the above ones are the API methods to override)
@@ -272,7 +282,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
       stencilToImage = vtk.vtkImageStencilToImage()
       stencilToImage.SetInputConnection(polyToStencil.GetOutputPort())
-      if operationName == "FILL_INSIDE" or operationName == "ERASE_INSIDE":
+      if operationName in ("FILL_INSIDE", "ERASE_INSIDE", "SET"):
         stencilToImage.SetInsideValue(1.0)
         stencilToImage.SetOutsideValue(0.0)
       else:
@@ -297,6 +307,8 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
       modMode = slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeAdd
       if operationName == "ERASE_INSIDE" or operationName == "ERASE_OUTSIDE":
         modMode = slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeRemove
+      elif operationName == "SET":
+        modMode = slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeSet
 
       self.scriptedEffect.modifySelectedSegmentByLabelmap(modifierLabelmap, modMode)
 
@@ -486,6 +498,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
       modelDisplayNode.SetColor(r, g, b)  # Edited segment color
       modelDisplayNode.BackfaceCullingOff()
       modelDisplayNode.SliceIntersectionVisibilityOn()
+      modelDisplayNode.SetSliceIntersectionThickness(2)
       modelDisplayNode.SetOpacity(0.3)  # Between 0-1, 1 being opaque
       slicer.mrmlScene.AddNode(modelDisplayNode)
       outputModel.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
