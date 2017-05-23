@@ -7,7 +7,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
   """This effect uses markup fiducials to segment the input volume"""
 
   def __init__(self, scriptedEffect):
-    scriptedEffect.name = 'Volume Clip'
+    scriptedEffect.name = 'Surface cut'
     scriptedEffect.perSegment = True # this effect operates on a single selected segment
     AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
 

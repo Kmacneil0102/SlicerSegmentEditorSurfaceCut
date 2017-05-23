@@ -4,13 +4,13 @@ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
 
-class SegmentEditorvolumeClip(ScriptedLoadableModule):
+class SegmentEditorSurfaceCut(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "SegmentEditorvolumeClip"
+    self.parent.title = "SegmentEditorSurfaceCut"
     self.parent.categories = ["Segmentation"]
     self.parent.dependencies = ["Segmentations"]
     self.parent.contributors = ["Andras Lasso (PerkLab)"]
@@ -27,7 +27,7 @@ class SegmentEditorvolumeClip(ScriptedLoadableModule):
     instance.setPythonSource(effectFilename.replace('\\','/'))
     instance.self().register()
 
-class SegmentEditorvolumeClipTest(ScriptedLoadableModuleTest):
+class SegmentEditorSurfaceCutTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -43,18 +43,18 @@ class SegmentEditorvolumeClipTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_volumeClip1()
+    self.test_SurfaceCut1()
 
-  def test_volumeClip1(self):
+  def test_SurfaceCut1(self):
     """
     Basic automated test of the segmentation method:
     - Create segmentation by placing sphere-shaped seeds
     - Run segmentation
     - Verify results using segment statistics
-    The test can be executed from SelfTests module (test name: SegmentEditorvolumeClip)
+    The test can be executed from SelfTests module (test name: SegmentEditorSurfaceCut)
     """
 
-    self.delayDisplay("Starting test_volumeClip1")
+    self.delayDisplay("Starting test_SurfaceCut1")
 
     import vtkSegmentationCorePython as vtkSegmentationCore
     import vtkSlicerSegmentationsModuleLogicPython as vtkSlicerSegmentationsModuleLogic
@@ -109,7 +109,7 @@ class SegmentEditorvolumeClipTest(ScriptedLoadableModuleTest):
 
     ##################################
     self.delayDisplay("Run segmentation")
-    segmentEditorWidget.setActiveEffectByName("volumeClip")
+    segmentEditorWidget.setActiveEffectByName("SurfaceCut")
     effect = segmentEditorWidget.activeEffect()
     effect.setParameter("ObjectScaleMm", 3.0)
     effect.self().onApply()
@@ -136,4 +136,4 @@ class SegmentEditorvolumeClipTest(ScriptedLoadableModuleTest):
     self.assertEqual( round(segStatLogic.statistics["Tumor","LM volume cc"]), 16)
     self.assertEqual( round(segStatLogic.statistics["Background","LM volume cc"]), 3010)
 
-    self.delayDisplay('test_volumeClip1 passed')
+    self.delayDisplay('test_SurfaceCut1 passed')
