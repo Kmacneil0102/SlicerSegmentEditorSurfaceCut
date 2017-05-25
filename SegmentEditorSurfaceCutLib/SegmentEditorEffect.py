@@ -153,7 +153,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     if segmentID and segmentationNode:
       segment = segmentationNode.GetSegmentation().GetSegment(segmentID)
       self.editButton.setVisible(segment.HasTag("fP"))
-      self.setButton.setVisible(segment.HasTag("fP"))
+      self.setButton.setVisible(not self.scriptedEffect.selectedSegmentLabelmap().IsEmpty())
 
   #
   # Effect specific methods (the above ones are the API methods to override)
