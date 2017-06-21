@@ -506,3 +506,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     outputModel.GetDisplayNode().SliceIntersectionVisibilityOn()
 
     outputModel.Modified()
+
+  def interactionNodeModified(self, interactionNode):
+    # Override default behavior: keep the effect active if markup placement mode is activated
+    pass
