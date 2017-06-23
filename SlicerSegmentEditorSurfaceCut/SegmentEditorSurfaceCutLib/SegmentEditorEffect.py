@@ -375,6 +375,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     self.updateModelFromSegmentMarkupNode()
 
   def onSegmentMarkupNodeModified(self, observer, eventid):
+    self.segmentMarkupNode.SetNthFiducialLabel(self.segmentMarkupNode.GetNumberOfFiducials() - 1, '')
     self.updateModelFromSegmentMarkupNode()
     self.updateGUIFromMRML()
 
