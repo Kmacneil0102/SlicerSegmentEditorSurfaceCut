@@ -1,32 +1,23 @@
+cmake_minimum_required(VERSION 2.8.9)
+
 
 #-----------------------------------------------------------------------------
-set(MODULE_NAME SegmentEditorvolumeClip)
+# Extension meta-information
+set(EXTENSION_HOMEPAGE "https://github.com/Kmacneil0102/SlicerSegmentEditorSurfaceCut")
+set(EXTENSION_CATEGORY "Segmentation")
+set(EXTENSION_CONTRIBUTORS "Kyle MacNeil")
+set(EXTENSION_DESCRIPTION "Effect for Segment Editor")
+set(EXTENSION_ICONURL "https://raw.githubusercontent.com/kmacneil0102/SlicerSegmentEditorSurfaceCut/master/SegmentEditorSurfaceCutLib/SegmentEditorEffect.png")
+set(EXTENSION_DEPENDS "NA") # Specified as a space separated string, a list or 'NA' if any
 
 #-----------------------------------------------------------------------------
-set(MODULE_PYTHON_SCRIPTS
-  ${MODULE_NAME}.py
-  )
-
-set(MODULE_PYTHON_RESOURCES
-  Resources/Icons/${MODULE_NAME}.png
-  )
+# Extension dependencies
+find_package(Slicer REQUIRED)
+include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
-slicerMacroBuildScriptedModule(
-  NAME ${MODULE_NAME}
-  SCRIPTS ${MODULE_PYTHON_SCRIPTS}
-  RESOURCES ${MODULE_PYTHON_RESOURCES}
-  WITH_GENERIC_TESTS
-  )
-
-add_subdirectory(EditorEffects)
+# Extension modules
+add_subdirectory(SegmentEditorSurfaceCut)
 
 #-----------------------------------------------------------------------------
-if(BUILD_TESTING)
-  # Register the unittest subclass in the main script as a ctest.
-  # Note that the test will also be available at runtime.
-  #slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
-
-  # Additional build-time testing
-  #add_subdirectory(Testing)
-endif()
+include(${Slicer_EXTENSION_CPACK})
